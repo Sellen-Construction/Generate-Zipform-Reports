@@ -1,2 +1,2 @@
 @echo off
-python "Zip Reports.py"
+python Generate.py
