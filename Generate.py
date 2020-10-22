@@ -1,12 +1,13 @@
 """ 
     Generate Annual ZIP Form CSV Reports
-    Version 1.0
+    Version 1.2
 
     Created by: Michael Rice
 
     Changelog:
         1.0 (10/20/2020): Initial release. Generate reports for the year specified in get_year and save the results to "{get_year} report.csv"
         1.1 (10/20/2020): Prompt for get_year at runtime. Removes the need to modify the code to change the year
+        1.2 (10/21/2020): Include "Workstations" and "Other" in the tally. These are legacy values included to capture historic data
 """
 
 # Required imports. Ensure requests and configparser have been installed before running
@@ -31,6 +32,8 @@ opt_fields = "name,created_at,custom_fields.enum_value.name"
 project_id = "1146674956832113"
 device_gid = "1152024058544808"
 accessory_gid = "1152024058544805"
+workstation_gid = "1152074579726438"
+request_type_gid = "1152024058544802"
 
 # Load the encrypted API key from the config file
 config = configparser.ConfigParser()
@@ -58,8 +61,10 @@ for month in range(1, 13):
         month = "0" + month
     month_counts[month] = 0
 
-# Prepare accessory and device counts for each month
+# Prepare accessory, workstation, and device counts for each month
 accessory_counts = month_counts.copy()
+workstation_counts = month_counts.copy()
+other_counts = month_counts.copy()
 device_counts = {}
 for device in device_types:
     device_counts[device] = month_counts.copy()
@@ -72,17 +77,24 @@ for row in report_source['data']:
     if row['created_at'][0:4] == str(get_year):
         for field in row['custom_fields']:
             # Ensure we have all of the data we need in order to parse
-            if "enum_value" in field and field['enum_value'] is not None and "name" in field['enum_value']:
+            if "enum_value" in field:
                 month = row['created_at'][5:7]
-
-                # Tally all of the requests for each month
-                if field['enum_value']['name'] in device_types and field['gid'] == device_gid:
-                    device_counts[field['enum_value']['name']][month] += 1
-                elif field['enum_value']['gid'] == accessory_gid:
-                    accessory_counts[month] += 1
-                else:
+                
+                if field['enum_value'] is not None and "name" in field['enum_value']:
+                    # Tally all of the requests for each month
+                    if field['enum_value']['name'] in device_types and field['gid'] == device_gid:
+                        device_counts[field['enum_value']['name']][month] += 1
+                    elif field['enum_value']['gid'] == accessory_gid:
+                        accessory_counts[month] += 1
+                    elif field['enum_value']['gid'] == workstation_gid:
+                        workstation_counts[month] += 1
+                    else:
+                        continue
+                    month_counts[month] += 1
+                elif field['gid'] == request_type_gid and field['enum_value'] is None:
+                    other_counts[month] += 1
+                    month_counts[month] += 1
                     continue
-                month_counts[month] += 1
 
 # Output the results to a CSV file
 with open(f"{get_year} report.csv", "w", newline = '\n') as file:
@@ -111,6 +123,24 @@ with open(f"{get_year} report.csv", "w", newline = '\n') as file:
     for month in accessory_counts.keys():
         row.append(accessory_counts[month])
         total += accessory_counts[month]
+    row.append(total)
+    output.writerow(row)
+
+    # Add the workstation counts to the file for each month and the total
+    total = 0
+    row = ["Workstation"]
+    for month in workstation_counts.keys():
+        row.append(workstation_counts[month])
+        total += workstation_counts[month]
+    row.append(total)
+    output.writerow(row)
+
+    # Add the other counts to the file for each month and the total
+    total = 0
+    row = ["Other"]
+    for month in other_counts.keys():
+        row.append(other_counts[month])
+        total += other_counts[month]
     row.append(total)
     output.writerow(row)
 
